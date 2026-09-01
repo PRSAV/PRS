@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const WORKER_URL = 'https://pv-capture-ai.mahipal-office21.workers.dev';
 const SESSION_KEY = 'prs-assetverify-session-v8';
-const STICKY_PREFIX = 'prs-assetverify-sticky-v8-';
+const STICKY_PREFIX = 'prs-assetverify-sticky-v8-'; // retained intentionally so existing company sticky defaults are preserved
 const CONDITIONS = ['Good','Fair','Poor','Damaged','Under Repair'];
 const STATUSES = ['Found','Not Found','Pending'];
 const NOT_FOUND_REASONS = ['','Missing','Disposed','Transferred','Stolen','Under Maintenance'];
@@ -174,9 +174,14 @@ function stickyKey(){return STICKY_PREFIX + session.company.id}
 function loadSticky(){try{return JSON.parse(localStorage.getItem(stickyKey())||'{}')}catch{return {}}}
 function saveStickyFromDom(){const out={};fields.sticky.forEach(f=>{const el=$(`sticky_${f.id}`);if(el)out[f.id]=el.value});localStorage.setItem(stickyKey(),JSON.stringify(out));return out}
 function fieldInputHtml(def,value='',idPrefix='field'){const id=`${idPrefix}_${def.id}`;const val=escapeHtml(value??'');if(def.type==='textarea')return `<label class="dynamic-field">${escapeHtml(def.label)}<textarea id="${id}" rows="3">${val}</textarea></label>`;if(def.type==='select'){const opts=(def.options||[]).map(o=>`<option ${String(o)===String(value)?'selected':''}>${escapeHtml(o)}</option>`).join('');return `<label class="dynamic-field">${escapeHtml(def.label)}<select id="${id}"><option value=""></option>${opts}</select></label>`}if(def.type==='member'){const opts=users.filter(u=>u.active!==0).map(u=>`<option value="${u.id}" ${String(u.id)===String(value)?'selected':''}>${escapeHtml(u.name)}</option>`).join('');return `<label class="dynamic-field">${escapeHtml(def.label)}<select id="${id}"><option value=""></option>${opts}</select></label>`}return `<label class="dynamic-field">${escapeHtml(def.label)}<input id="${id}" type="${def.type==='number'?'number':'text'}" value="${val}" /></label>`}
-function renderStickyFields(){const vals=loadSticky();$('stickyFieldsContainer').innerHTML=fields.sticky.map(f=>fieldInputHtml(f,vals[f.id]??fieldDefaultValue(f),'sticky')).join('')||'<div class="empty">No sticky fields configured.</div>';fields.sticky.forEach(f=>{const el=$(`sticky_${f.id}`);if(el)el.addEventListener('change',saveStickyFromDom)})}
+function renderStickyFields(){const c=$('stickyFieldsContainer');if(!c)return;const vals=loadSticky();c.innerHTML=fields.sticky.map(f=>fieldInputHtml(f,vals[f.id]??fieldDefaultValue(f),'sticky')).join('')||'<div class="empty">No sticky fields configured.</div>';fields.sticky.forEach(f=>{const el=$(`sticky_${f.id}`);if(el)el.addEventListener('change',saveStickyFromDom)})}
 function collectFieldValues(group,prefix){const defs=fields[group];const out={};defs.forEach(f=>{const el=$(`${prefix}_${f.id}`);if(el)out[f.id]=el.value});return out}
 function renderVariableFields(containerId,values={},prefix='variable'){$(containerId).innerHTML=fields.variable.map(f=>fieldInputHtml(f,values[f.id]??(f.systemKey==='clickedBy'?session.member?.id:''),prefix)).join('')||'<div class="empty">No variable fields configured.</div>'}
+function captureStickyValues(){return collectFieldValues('sticky','captureSticky')}
+function saveCaptureStickyValues(){const values=captureStickyValues();localStorage.setItem(stickyKey(),JSON.stringify(values));return values}
+function areCaptureStickyFieldsComplete(){if(!fields.sticky.length)return true;return fields.sticky.every(f=>{const el=$(`captureSticky_${f.id}`);return !!String(el?.value??'').trim()})}
+function updateGuidedCaptureFlow(scrollWhenRevealed=false){if(!pendingRecord||!$('detailStep2'))return;const complete=areCaptureStickyFieldsComplete();const hint=$('stickyCompletionHint');if(complete){saveCaptureStickyValues();if(hint)hint.textContent=fields.sticky.length?'✓ Sticky Fields complete. Variable Fields are now available below.':'No Sticky Fields are configured. Variable Fields are available below.';const wasHidden=$('detailStep2').classList.contains('hidden');$('detailStep2').classList.remove('hidden');if(wasHidden&&scrollWhenRevealed)requestAnimationFrame(()=>$('detailStep2').scrollIntoView({behavior:'smooth',block:'start'}))}else{const missing=fields.sticky.filter(f=>!String($(`captureSticky_${f.id}`)?.value??'').trim()).map(f=>f.label);if(hint)hint.textContent=`Complete Sticky Fields to continue: ${missing.join(', ')}`;$('detailStep2').classList.add('hidden')}}
+function renderCaptureStickyFields(){const c=$('captureStickyFieldsContainer');if(!c)return;const vals=loadSticky();c.innerHTML=fields.sticky.map(f=>fieldInputHtml(f,vals[f.id]??fieldDefaultValue(f),'captureSticky')).join('')||'<div class="empty">No sticky fields configured.</div>';fields.sticky.forEach(f=>{const el=$(`captureSticky_${f.id}`);if(!el)return;el.addEventListener('input',()=>updateGuidedCaptureFlow(true));el.addEventListener('change',()=>updateGuidedCaptureFlow(true))});updateGuidedCaptureFlow(false)}
 function fieldLabelById(id){return [...fields.sticky,...fields.variable].find(f=>String(f.id)===String(id))?.label||id}
 
 async function refreshFields(){if(!session?.member)return;try{const d=await apiJson('/fields');fields={sticky:d.sticky||[],variable:d.variable||[]};await cacheSet('fields',fields);if(!$('mastersView').classList.contains('hidden'))renderMasters()}catch(e){const cached=await cacheGet('fields');if(cached)fields=cached;else if(navigator.onLine)console.error(e);if(!$('mastersView').classList.contains('hidden'))renderMasters()}}
@@ -203,8 +208,8 @@ function blobToDataUrl(blob){return new Promise((resolve,reject)=>{const r=new F
 function stickySnapshotText(sticky){return fields.sticky.map(f=>`${f.label}: ${sticky[f.id]||'—'}`).join(' · ')}
 function setCaptureDateTime(iso){const d=new Date(iso);$('capturedDateInput').value=isoDateInput(d);$('capturedTimeInput').value=timeInput(d)}
 
-$('takePhotoBtn').onclick=()=>{if(!hasPermission('verification.capture_photo'))return;saveStickyFromDom();appendPhotoMode=false;$('cameraInput').click()};
-$('uploadPhotoBtn').onclick=()=>{if(!hasPermission('verification.upload_gallery'))return;saveStickyFromDom();appendPhotoMode=false;$('galleryInput').click()};
+$('takePhotoBtn').onclick=()=>{if(!hasPermission('verification.capture_photo'))return;appendPhotoMode=false;$('cameraInput').click()};
+$('uploadPhotoBtn').onclick=()=>{if(!hasPermission('verification.upload_gallery'))return;appendPhotoMode=false;$('galleryInput').click()};
 $('addCameraPhotoBtn').onclick=()=>{appendPhotoMode=true;$('cameraInput').click()};
 $('addGalleryPhotosBtn').onclick=()=>{appendPhotoMode=true;$('galleryInput').click()};
 $('cameraInput').onchange=async e=>{const files=[...(e.target.files||[])];e.target.value='';if(appendPhotoMode)await appendPendingPhotos(files,'camera');else await preparePhotos(files,'camera')};
@@ -213,28 +218,12 @@ $('galleryInput').onchange=async e=>{const files=[...(e.target.files||[])];e.tar
 async function compressFiles(files,source){const list=[...(files||[])].filter(Boolean).slice(0,12);const out=[];for(const file of list){const c=await compressPhoto(file);out.push({id:uid(),dataUrl:c.dataUrl,size:c.size,name:file.name||'photo.jpg',source})}return out}
 function renderPendingPhotoPreview(){const photos=pendingRecord?.photos||[];const has=photos.length>0;$('photoPreviewArea').classList.toggle('hidden',!has);$('photoPreview').classList.toggle('hidden',!has);if(has)$('photoPreview').src=photos[0].dataUrl;$('photoThumbs').innerHTML=photos.map((p,i)=>`<div class="photo-thumb ${i===0?'active':''}"><img src="${p.dataUrl}" alt="Photo ${i+1}"><button type="button" data-remove-pending-photo="${p.id}" aria-label="Remove photo">✕</button><span>${i+1}</span></div>`).join('');document.querySelectorAll('[data-remove-pending-photo]').forEach(b=>b.onclick=()=>{if(!pendingRecord)return;pendingRecord.photos=pendingRecord.photos.filter(p=>String(p.id)!==String(b.dataset.removePendingPhoto));const first=pendingRecord.photos[0];pendingRecord.dataUrl=first?.dataUrl||null;pendingRecord.size=pendingRecord.photos.reduce((n,p)=>n+(p.size||0),0);pendingRecord.photoName=first?.name||'';renderPendingPhotoPreview()})}
 function openPendingDetailStep1(){
-  if(!$('detailStep2')||!$('continueToVariableBtn')){
-    $('detailModal').classList.remove('hidden');
-    return;
-  }
-  $('detailStep2').classList.add('hidden');
-  $('continueToVariableBtn').classList.remove('hidden');
   $('detailModal').classList.remove('hidden');
   requestAnimationFrame(()=>{
     const sheet=$('detailModal').querySelector('.modal-sheet');
     if(sheet)sheet.scrollTop=0;
   });
-}
-
-if($('continueToVariableBtn')){
-  $('continueToVariableBtn').onclick=()=>{
-    if(!pendingRecord)return;
-    $('continueToVariableBtn').classList.add('hidden');
-    $('detailStep2').classList.remove('hidden');
-    requestAnimationFrame(()=>{
-      $('detailStep2').scrollIntoView({behavior:'smooth',block:'start'});
-    });
-  };
+  updateGuidedCaptureFlow(false);
 }
 
 async function preparePhotos(files,source){
@@ -265,8 +254,7 @@ async function preparePhotos(files,source){
     $('longitude').value='';
     $('gpsAccuracy').value='';
     $('gpsNote').textContent='GPS is being captured in the background. You can continue now.';
-    const sticky=saveStickyFromDom();
-    $('locationSnapshot').textContent=stickySnapshotText(sticky);
+    renderCaptureStickyFields();
     renderVariableFields('variableFieldsContainer',{},'variable');
     renderAssetRows([assetDefault()]);
     $('aiStatus').textContent=`${photos.length} photo${photos.length===1?'':'s'} ready (${bytesLabel(pendingRecord.size)}). AI analysis is running in the background.`;
@@ -294,7 +282,7 @@ $('addAssetRowBtn').onclick=()=>{$('assetRows').insertAdjacentHTML('beforeend',a
 $('discardPhotoBtn').onclick=()=>{pendingRecord=null;appendPhotoMode=false;aiSeq++;$('detailModal').classList.add('hidden')};
 
 function clickedByFromVariable(variable){const f=fields.variable.find(x=>x.systemKey==='clickedBy');return f&&variable[f.id]?variable[f.id]:session.member.id}
-$('savePhotoBtn').onclick=async()=>{if(!pendingRecord||!hasPermission('verification.save'))return;const assets=collectAssetRows();if(!assets.length){toast('Enter at least one asset name.');return}const sticky=saveStickyFromDom(),variable=collectFieldValues('variable','variable'),clientId=uid(),photos=(pendingRecord.photos||[]).map(p=>({dataUrl:p.dataUrl,name:p.name||'photo.jpg',source:p.source||pendingRecord.source,size:p.size||0}));const payload={clientId,photos,photo:photos[0]?.dataUrl||null,photoSize:photos.reduce((n,p)=>n+(p.size||0),0),photoName:photos[0]?.name||'',capturedAt:combineDateTime($('capturedDateInput').value,$('capturedTimeInput').value),source:pendingRecord.source,scanCode:pendingRecord.scanCode||'',latitude:$('latitude').value.trim(),longitude:$('longitude').value.trim(),gpsAccuracy:$('gpsAccuracy').value.trim(),sticky,variable,clickedByMemberId:clickedByFromVariable(variable),assets};try{if(!navigator.onLine)throw new TypeError('Offline');await apiJson('/records',{method:'POST',body:JSON.stringify(payload)});pendingRecord=null;$('detailModal').classList.add('hidden');toast('Verification saved to company cloud.');await refreshRecords()}catch(e){if(isNetworkError(e)||!navigator.onLine){await queueOfflineAction('POST','/records',payload,buildOptimisticRecord(payload));pendingRecord=null;$('detailModal').classList.add('hidden');toast('Saved offline. It will sync automatically when internet returns.',4800);await refreshRecords()}else toast(e.message,4500)}};
+$('savePhotoBtn').onclick=async()=>{if(!pendingRecord||!hasPermission('verification.save'))return;if(!areCaptureStickyFieldsComplete()){toast('Complete all Sticky Fields first. Variable Fields will then appear automatically.',4200);updateGuidedCaptureFlow(false);return}const assets=collectAssetRows();if(!assets.length){toast('Enter at least one asset name.');return}const sticky=saveCaptureStickyValues(),variable=collectFieldValues('variable','variable'),clientId=uid(),photos=(pendingRecord.photos||[]).map(p=>({dataUrl:p.dataUrl,name:p.name||'photo.jpg',source:p.source||pendingRecord.source,size:p.size||0}));const payload={clientId,photos,photo:photos[0]?.dataUrl||null,photoSize:photos.reduce((n,p)=>n+(p.size||0),0),photoName:photos[0]?.name||'',capturedAt:combineDateTime($('capturedDateInput').value,$('capturedTimeInput').value),source:pendingRecord.source,scanCode:pendingRecord.scanCode||'',latitude:$('latitude').value.trim(),longitude:$('longitude').value.trim(),gpsAccuracy:$('gpsAccuracy').value.trim(),sticky,variable,clickedByMemberId:clickedByFromVariable(variable),assets};try{if(!navigator.onLine)throw new TypeError('Offline');await apiJson('/records',{method:'POST',body:JSON.stringify(payload)});pendingRecord=null;$('detailModal').classList.add('hidden');await refreshRecords();toast('Verification saved. It is now included in Export Excel.',4200)}catch(e){if(isNetworkError(e)||!navigator.onLine){await queueOfflineAction('POST','/records',payload,buildOptimisticRecord(payload));pendingRecord=null;$('detailModal').classList.add('hidden');await refreshRecords();toast('Verification saved offline. It will sync automatically and then be available in Export Excel.',5000)}else toast(e.message,4500)}};
 
 // ---------- Scan & Verify ----------
 function renderScanCodes(){const manual=$('manualScanCode').value.trim();const all=[...new Set([...scanCodes,...(manual?[manual]:[])])];$('scanDetectedList').innerHTML=all.length?all.map((c,i)=>`<span class="scan-code-chip">${escapeHtml(c)}${scanCodes.includes(c)?`<button type="button" data-remove-scan="${escapeHtml(c)}">✕</button>`:''}</span>`).join(''):'<span class="muted">No codes captured yet.</span>';document.querySelectorAll('[data-remove-scan]').forEach(b=>b.onclick=()=>{scanCodes=scanCodes.filter(c=>c!==b.dataset.removeScan);renderScanCodes()})}
@@ -332,8 +320,7 @@ async function prepareScanRecord(codes,evidenceFiles=[]){
     $('longitude').value='';
     $('gpsAccuracy').value='';
     $('gpsNote').textContent='GPS is being captured in the background. You can continue now.';
-    const sticky=saveStickyFromDom();
-    $('locationSnapshot').textContent=stickySnapshotText(sticky);
+    renderCaptureStickyFields();
     renderVariableFields('variableFieldsContainer',{},'variable');
     renderAssetRows(codes.map(code=>({...assetDefault(),barcode:code})));
     openPendingDetailStep1();

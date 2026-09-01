@@ -1,3 +1,7 @@
+# IMPORTANT – Guided Capture Flow Fix
+
+If your Cloudflare Worker already reports PRS.AssetVerify v11, DO NOT replace the Worker for this flow fix. Upload the frontend files (index.html, app.js, styles.css, sw.js, manifest.webmanifest, icon.svg) to GitHub. Existing companies remain in D1/R2 and are not deleted by this frontend update.
+
 # PRS.AssetVerify V11 Setup
 
 ## 1. Cloudflare Worker

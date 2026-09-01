@@ -99,14 +99,6 @@
       </section>
 
       <section id="verifyView" class="view hidden">
-        <div class="card sticky-card">
-          <div class="section-title-row">
-            <div><h2>Sticky Fields</h2><p>These values remain unchanged until manually changed. Configure them from Setting & Master.</p></div>
-            <span class="pill">Sticky</span>
-          </div>
-          <div id="stickyFieldsContainer" class="grid two"></div>
-        </div>
-
         <section class="capture-panel">
           <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
           <input id="galleryInput" type="file" accept="image/*" multiple hidden />
@@ -116,7 +108,7 @@
             <button id="uploadPhotoBtn" class="secondary big-camera" data-permission-button="verification.upload_gallery">▣ Gallery</button>
             <button id="scanVerifyBtn" class="secondary big-camera" data-permission-button="verification.scan">▦ Scan & Verify</button>
           </div>
-          <p class="hint">Take Photo and Scan & Verify request high-accuracy GPS. Latitude, longitude and GPS accuracy are saved with the record and exported to Excel.</p>
+          <p class="hint"><strong>Simple verification flow:</strong> click Take Photo / Gallery / Scan & Verify → complete Sticky Fields → Variable Fields appear automatically → review asset details → Save Verification. Every saved record is then available in Export Excel.</p>
           <div id="offlineNotice" class="offline-notice hidden">Offline mode active. New verification records will stay safely on this device and sync automatically when internet returns.</div>
         </section>
 
@@ -283,18 +275,30 @@
       <label>GPS Accuracy (metres)<input id="gpsAccuracy" inputmode="decimal" /></label>
     </div>
     <div id="gpsNote" class="field-note"></div>
-    <div id="locationSnapshot" class="location-snapshot"></div>
-    <button id="continueToVariableBtn" type="button" class="primary full">Continue to Variable Details →</button>
-    <div id="detailStep2" class="hidden">
-      <div class="section-title-row top-gap">
-        <div><h3>Variable Details</h3><p>Complete the variable information for this verification, review the detected assets, then save the record.</p></div>
+
+    <div class="capture-step-card">
+      <div class="section-title-row">
+        <div><div class="eyebrow">STEP 1</div><h3>Sticky Fields</h3><p>Complete the location / sticky information for this verification. Variable Fields will appear automatically as soon as all Sticky Fields are completed.</p></div>
+        <span class="pill">Sticky</span>
       </div>
-      <div id="variableFieldsContainer" class="form-stack"></div>
+      <div id="captureStickyFieldsContainer" class="grid two"></div>
+      <div id="stickyCompletionHint" class="field-note"></div>
+    </div>
+
+    <div id="detailStep2" class="hidden">
+      <div class="capture-step-card top-gap">
+        <div class="section-title-row">
+          <div><div class="eyebrow">STEP 2</div><h3>Variable Fields</h3><p>Complete the variable information, review the asset details, then save the verification.</p></div>
+          <span class="pill">Variable</span>
+        </div>
+        <div id="variableFieldsContainer" class="form-stack"></div>
+      </div>
       <div class="assets-panel">
         <div class="assets-panel-head"><div><h3>Assets in this verification</h3><span id="aiStatus" class="field-note"></span></div><button id="retryAiBtn" class="secondary mini-btn">Retry AI</button></div>
         <div id="assetRows" class="asset-rows"></div>
         <button id="addAssetRowBtn" class="secondary full-inline">＋ Add Asset Row</button>
       </div>
+      <div class="save-step-note"><strong>STEP 3 · Save</strong><span>Once saved, this verification is included automatically in the Excel export.</span></div>
       <button id="savePhotoBtn" class="primary full">Save Verification</button>
     </div>
   </div></div>

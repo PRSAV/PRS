@@ -1,3 +1,9 @@
+# PRS.AssetVerify V11 – Guided Capture Flow Fix
+
+This package keeps the existing V11 Cloudflare Worker and database schema. It changes only the frontend verification flow. Existing companies and cloud data are not deleted by this update.
+
+New flow: Take Photo / Gallery / Scan → Sticky Fields → Variable Fields appear automatically → Asset Details → Save Verification → Export Excel.
+
 # PRS.AssetVerify Version 11
 
 Version 11 is a non-destructive upgrade. Existing companies and their cloud data are preserved.
