@@ -191,8 +191,31 @@ function openFieldModal(group,id=null){editingFieldGroup=group;editingField=id?f
 $('saveFieldBtn').onclick=async()=>{const payload={group:editingFieldGroup,label:$('fieldLabel').value.trim(),type:$('fieldType').value,options:$('fieldType').value==='select'?$('fieldOptions').value.split(',').map(x=>x.trim()).filter(Boolean):[]};if(!payload.label){toast('Field label is required.');return}try{if(editingField)await apiJson(`/fields/${editingField.id}`,{method:'PUT',body:JSON.stringify(payload)});else await apiJson('/fields',{method:'POST',body:JSON.stringify(payload)});$('fieldModal').classList.add('hidden');await refreshFields();renderMasters();renderStickyFields();toast('Field master updated.')}catch(e){toast(e.message,4200)}};
 async function deleteField(group,id){const f=fields[group].find(x=>String(x.id)===String(id));if(!confirm(`Delete field "${f?.label||id}"? Existing historical values remain stored but the field will no longer appear.`))return;try{await apiJson(`/fields/${id}`,{method:'DELETE'});await refreshFields();renderMasters();renderStickyFields();toast('Field deleted.')}catch(e){toast(e.message,4200)}}
 
-// ---------- GPS ----------
+// ---------- GPS (V12: automatic, but optional) ----------
 function getCurrentGps(){return new Promise(resolve=>{if(!navigator.geolocation){resolve({latitude:'',longitude:'',accuracy:'',error:'Geolocation is not supported on this device.'});return}navigator.geolocation.getCurrentPosition(p=>resolve({latitude:p.coords.latitude.toFixed(7),longitude:p.coords.longitude.toFixed(7),accuracy:Math.round(p.coords.accuracy),error:''}),e=>resolve({latitude:'',longitude:'',accuracy:'',error:e.message||'GPS unavailable'}),{enableHighAccuracy:true,timeout:15000,maximumAge:0})})}
+
+async function captureGpsForPendingRecord(captureToken){
+  if(!pendingRecord||pendingRecord.captureToken!==captureToken)return {latitude:'',longitude:'',accuracy:'',error:'Verification is no longer active.'};
+  $('gpsNote').textContent='Trying to detect GPS automatically… You may continue without it.';
+  const gps=await getCurrentGps();
+  if(!pendingRecord||pendingRecord.captureToken!==captureToken)return gps;
+  pendingRecord.gps=gps;
+  $('latitude').value=gps.latitude||'';
+  $('longitude').value=gps.longitude||'';
+  $('gpsAccuracy').value=gps.accuracy||'';
+  $('gpsNote').textContent=gps.error
+    ? `GPS not captured: ${gps.error}. Location is optional, so you can still save this verification.`
+    : `GPS detected automatically with approximately ${gps.accuracy} m device accuracy. These fields are optional and may be cleared.`;
+  return gps;
+}
+
+function currentGpsFromForm(){
+  return {
+    latitude:$('latitude').value.trim(),
+    longitude:$('longitude').value.trim(),
+    accuracy:$('gpsAccuracy').value.trim()
+  };
+}
 
 // ---------- Image / asset rows ----------
 function assetDefault(){return {rowId:uid(),assetName:'',quantity:1,condition:'Good',verificationStatus:'Found',notFoundReason:'',serialNumber:'',barcode:''}}
@@ -243,7 +266,7 @@ async function preparePhotos(files,source){
       capturedAt:d.toISOString(),
       photoName:first.name,
       scanCode:'',
-      gps:{latitude:'',longitude:'',accuracy:'',error:'GPS is being captured…'}
+      gps:{latitude:'',longitude:'',accuracy:'',error:'GPS detection is in progress…'}
     };
     $('detailTitle').textContent=photos.length>1?`Review ${photos.length} photos`:'Review captured photo';
     renderPendingPhotoPreview();
@@ -253,21 +276,14 @@ async function preparePhotos(files,source){
     $('latitude').value='';
     $('longitude').value='';
     $('gpsAccuracy').value='';
-    $('gpsNote').textContent='GPS is being captured in the background. You can continue now.';
+    $('gpsNote').textContent='GPS detection started automatically. Latitude, Longitude and GPS Accuracy are optional; you can save even if location is unavailable.';
     renderCaptureStickyFields();
     renderVariableFields('variableFieldsContainer',{},'variable');
     renderAssetRows([assetDefault()]);
     $('aiStatus').textContent=`${photos.length} photo${photos.length===1?'':'s'} ready (${bytesLabel(pendingRecord.size)}). AI analysis is running in the background.`;
     openPendingDetailStep1();
 
-    getCurrentGps().then(gps=>{
-      if(!pendingRecord||pendingRecord.captureToken!==captureToken)return;
-      pendingRecord.gps=gps;
-      $('latitude').value=gps.latitude;
-      $('longitude').value=gps.longitude;
-      $('gpsAccuracy').value=gps.accuracy;
-      $('gpsNote').textContent=gps.error?`GPS: ${gps.error}`:`GPS captured with approximately ${gps.accuracy} m device accuracy.`;
-    }).catch(()=>{});
+    pendingRecord.gpsPromise=captureGpsForPendingRecord(captureToken);
 
     runAi();
   }catch(e){
@@ -282,7 +298,71 @@ $('addAssetRowBtn').onclick=()=>{$('assetRows').insertAdjacentHTML('beforeend',a
 $('discardPhotoBtn').onclick=()=>{pendingRecord=null;appendPhotoMode=false;aiSeq++;$('detailModal').classList.add('hidden')};
 
 function clickedByFromVariable(variable){const f=fields.variable.find(x=>x.systemKey==='clickedBy');return f&&variable[f.id]?variable[f.id]:session.member.id}
-$('savePhotoBtn').onclick=async()=>{if(!pendingRecord||!hasPermission('verification.save'))return;if(!areCaptureStickyFieldsComplete()){toast('Complete all Sticky Fields first. Variable Fields will then appear automatically.',4200);updateGuidedCaptureFlow(false);return}const assets=collectAssetRows();if(!assets.length){toast('Enter at least one asset name.');return}const sticky=saveCaptureStickyValues(),variable=collectFieldValues('variable','variable'),clientId=uid(),photos=(pendingRecord.photos||[]).map(p=>({dataUrl:p.dataUrl,name:p.name||'photo.jpg',source:p.source||pendingRecord.source,size:p.size||0}));const payload={clientId,photos,photo:photos[0]?.dataUrl||null,photoSize:photos.reduce((n,p)=>n+(p.size||0),0),photoName:photos[0]?.name||'',capturedAt:combineDateTime($('capturedDateInput').value,$('capturedTimeInput').value),source:pendingRecord.source,scanCode:pendingRecord.scanCode||'',latitude:$('latitude').value.trim(),longitude:$('longitude').value.trim(),gpsAccuracy:$('gpsAccuracy').value.trim(),sticky,variable,clickedByMemberId:clickedByFromVariable(variable),assets};try{if(!navigator.onLine)throw new TypeError('Offline');await apiJson('/records',{method:'POST',body:JSON.stringify(payload)});pendingRecord=null;$('detailModal').classList.add('hidden');await refreshRecords();toast('Verification saved. It is now included in Export Excel.',4200)}catch(e){if(isNetworkError(e)||!navigator.onLine){await queueOfflineAction('POST','/records',payload,buildOptimisticRecord(payload));pendingRecord=null;$('detailModal').classList.add('hidden');await refreshRecords();toast('Verification saved offline. It will sync automatically and then be available in Export Excel.',5000)}else toast(e.message,4500)}};
+$('savePhotoBtn').onclick=async()=>{
+  if(!pendingRecord||!hasPermission('verification.save'))return;
+  if(!areCaptureStickyFieldsComplete()){
+    toast('Complete all Sticky Fields first. Variable Fields will then appear automatically.',4200);
+    updateGuidedCaptureFlow(false);
+    return;
+  }
+
+  // V12: GPS detection runs automatically in the background, but it never
+  // blocks saving. Whatever values are currently available are saved; blank
+  // Latitude / Longitude / GPS Accuracy are valid.
+
+  const assets=collectAssetRows();
+  if(!assets.length){
+    toast('Enter at least one asset name.');
+    return;
+  }
+
+  const sticky=saveCaptureStickyValues();
+  const variable=collectFieldValues('variable','variable');
+  const clientId=uid();
+  const photos=(pendingRecord.photos||[]).map(p=>({
+    dataUrl:p.dataUrl,
+    name:p.name||'photo.jpg',
+    source:p.source||pendingRecord.source,
+    size:p.size||0
+  }));
+
+  const payload={
+    clientId,
+    photos,
+    photo:photos[0]?.dataUrl||null,
+    photoSize:photos.reduce((n,p)=>n+(p.size||0),0),
+    photoName:photos[0]?.name||'',
+    capturedAt:combineDateTime($('capturedDateInput').value,$('capturedTimeInput').value),
+    source:pendingRecord.source,
+    scanCode:pendingRecord.scanCode||'',
+    latitude:$('latitude').value.trim(),
+    longitude:$('longitude').value.trim(),
+    gpsAccuracy:$('gpsAccuracy').value.trim(),
+    sticky,
+    variable,
+    clickedByMemberId:clickedByFromVariable(variable),
+    assets
+  };
+
+  try{
+    if(!navigator.onLine)throw new TypeError('Offline');
+    await apiJson('/records',{method:'POST',body:JSON.stringify(payload)});
+    pendingRecord=null;
+    $('detailModal').classList.add('hidden');
+    await refreshRecords();
+    toast('Verification saved. It is now included in Export Excel.',4200);
+  }catch(e){
+    if(isNetworkError(e)||!navigator.onLine){
+      await queueOfflineAction('POST','/records',payload,buildOptimisticRecord(payload));
+      pendingRecord=null;
+      $('detailModal').classList.add('hidden');
+      await refreshRecords();
+      toast('Verification saved offline. It will sync automatically and then be available in Export Excel.',5000);
+    }else{
+      toast(e.message,4500);
+    }
+  }
+};
 
 // ---------- Scan & Verify ----------
 function renderScanCodes(){const manual=$('manualScanCode').value.trim();const all=[...new Set([...scanCodes,...(manual?[manual]:[])])];$('scanDetectedList').innerHTML=all.length?all.map((c,i)=>`<span class="scan-code-chip">${escapeHtml(c)}${scanCodes.includes(c)?`<button type="button" data-remove-scan="${escapeHtml(c)}">✕</button>`:''}</span>`).join(''):'<span class="muted">No codes captured yet.</span>';document.querySelectorAll('[data-remove-scan]').forEach(b=>b.onclick=()=>{scanCodes=scanCodes.filter(c=>c!==b.dataset.removeScan);renderScanCodes()})}
@@ -307,7 +387,7 @@ async function prepareScanRecord(codes,evidenceFiles=[]){
       capturedAt:d.toISOString(),
       photoName:first?.name||'',
       scanCode:joined,
-      gps:{latitude:'',longitude:'',accuracy:'',error:'GPS is being captured…'}
+      gps:{latitude:'',longitude:'',accuracy:'',error:'GPS detection is in progress…'}
     };
     $('detailTitle').textContent=codes.length>1?`Scan & Verify · ${codes.length} codes`:'Scan & Verify Details';
     renderPendingPhotoPreview();
@@ -319,20 +399,13 @@ async function prepareScanRecord(codes,evidenceFiles=[]){
     $('latitude').value='';
     $('longitude').value='';
     $('gpsAccuracy').value='';
-    $('gpsNote').textContent='GPS is being captured in the background. You can continue now.';
+    $('gpsNote').textContent='GPS detection started automatically. Latitude, Longitude and GPS Accuracy are optional; you can save even if location is unavailable.';
     renderCaptureStickyFields();
     renderVariableFields('variableFieldsContainer',{},'variable');
     renderAssetRows(codes.map(code=>({...assetDefault(),barcode:code})));
     openPendingDetailStep1();
 
-    getCurrentGps().then(gps=>{
-      if(!pendingRecord||pendingRecord.captureToken!==captureToken)return;
-      pendingRecord.gps=gps;
-      $('latitude').value=gps.latitude;
-      $('longitude').value=gps.longitude;
-      $('gpsAccuracy').value=gps.accuracy;
-      $('gpsNote').textContent=gps.error?`GPS: ${gps.error}`:`GPS captured with approximately ${gps.accuracy} m device accuracy.`;
-    }).catch(()=>{});
+    pendingRecord.gpsPromise=captureGpsForPendingRecord(captureToken);
   }catch(e){
     console.error(e);
     toast('Could not prepare scan verification. Please try again.',4200);
@@ -342,19 +415,32 @@ async function prepareScanRecord(codes,evidenceFiles=[]){
 // ---------- Records ----------
 async function refreshRecords(){if(!session?.member)return;let base=[];try{const d=await apiJson('/records');base=d.records||[];await cacheSet('records',base)}catch(e){base=(await cacheGet('records'))||[];if(!isNetworkError(e)&&navigator.onLine)console.error(e)}records=await applyQueueOverlay(base);renderRecent();populateFilters();if(!$('searchView').classList.contains('hidden'))renderSearch();updateSyncUi()}
 function flattenAssets(){return records.flatMap(r=>(r.assets||[]).map(a=>({record:r,asset:a})))}
-function recordCard(r){const tags=(r.assets||[]).map(a=>`<span class="asset-tag ${statusClass(a.verificationStatus)}">${escapeHtml(a.assetName)} × ${a.quantity} · ${escapeHtml(a.condition)} · ${escapeHtml(a.verificationStatus)}</span>`).join('');const sticky=fields.sticky.map(f=>`${escapeHtml(f.label)}: ${escapeHtml(r.sticky?.[f.id]||'')}`).filter(x=>!x.endsWith(': ')).join(' · ');const gps=r.latitude&&r.longitude?`<span class="gps-chip">GPS ${escapeHtml(r.latitude)}, ${escapeHtml(r.longitude)}</span>`:'';const urls=r.photoUrls?.length?r.photoUrls:(r.photoUrl?[r.photoUrl]:[]);const img=urls[0]&&hasPermission('verification.view_images')?`<div class="record-photo-wrap"><img src="${escapeHtml(urls[0])}" alt="Verification">${urls.length>1?`<span class="photo-count-badge">${urls.length} photos</span>`:''}</div>`:'';return `<article class="record ${img?'':'no-photo'} ${r.localPending?'local-pending':''}">${img}<div class="record-body">${r.localPending?'<span class="pending-sync-chip">Pending cloud sync</span>':''}<div class="record-source">${escapeHtml(r.source||'record')}</div><h3>${escapeHtml((r.assets?.[0]?.assetName)||r.scanCode||'Verification')}</h3><p>${sticky||'No sticky fields'}</p><p>${fmtDate(r.capturedAt)} ${fmtTime(r.capturedAt)} · By ${escapeHtml(r.clickedByName||'')}</p>${gps}${r.scanCode?`<p>Scanned Code(s): ${escapeHtml(r.scanCode)}</p>`:''}<div class="asset-tags">${tags}</div></div><div class="record-actions">${hasPermission('verification.edit')?`<button class="secondary mini-btn" data-edit-record="${r.id}">Edit</button>`:''}${hasPermission('verification.delete')?`<button class="danger mini-btn" data-delete-record="${r.id}">Delete</button>`:''}</div></article>`}
+function canViewPhotos(){return hasPermission('verification.view_images')||hasPermission('verification.view')||hasPermission('records.export')}
+function currentPhotoUrl(url){
+  if(!url)return '';
+  if(String(url).startsWith('data:image/'))return url;
+  try{
+    const u=new URL(url,WORKER_URL);
+    if(session?.token)u.searchParams.set('access',session.token);
+    u.searchParams.set('pv','12');
+    return u.toString();
+  }catch{return url}
+}
+function currentPhotoUrls(r){return (r?.photoUrls?.length?r.photoUrls:(r?.photoUrl?[r.photoUrl]:[])).map(currentPhotoUrl).filter(Boolean)}
+
+function recordCard(r){const tags=(r.assets||[]).map(a=>`<span class="asset-tag ${statusClass(a.verificationStatus)}">${escapeHtml(a.assetName)} × ${a.quantity} · ${escapeHtml(a.condition)} · ${escapeHtml(a.verificationStatus)}</span>`).join('');const sticky=fields.sticky.map(f=>`${escapeHtml(f.label)}: ${escapeHtml(r.sticky?.[f.id]||'')}`).filter(x=>!x.endsWith(': ')).join(' · ');const gps=r.latitude&&r.longitude?`<span class="gps-chip">GPS ${escapeHtml(r.latitude)}, ${escapeHtml(r.longitude)}</span>`:'';const urls=currentPhotoUrls(r);const img=urls[0]&&canViewPhotos()?`<div class="record-photo-wrap"><img src="${escapeHtml(urls[0])}" alt="Verification photo" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.record-photo-wrap').classList.add('photo-load-error');this.alt='Photo could not be loaded';">${urls.length>1?`<span class="photo-count-badge">${urls.length} photos</span>`:''}</div>`:'';return `<article class="record ${img?'':'no-photo'} ${r.localPending?'local-pending':''}">${img}<div class="record-body">${r.localPending?'<span class="pending-sync-chip">Pending cloud sync</span>':''}<div class="record-source">${escapeHtml(r.source||'record')}</div><h3>${escapeHtml((r.assets?.[0]?.assetName)||r.scanCode||'Verification')}</h3><p>${sticky||'No sticky fields'}</p><p>${fmtDate(r.capturedAt)} ${fmtTime(r.capturedAt)} · By ${escapeHtml(r.clickedByName||'')}</p>${gps}${r.scanCode?`<p>Scanned Code(s): ${escapeHtml(r.scanCode)}</p>`:''}<div class="asset-tags">${tags}</div></div><div class="record-actions">${hasPermission('verification.edit')?`<button class="secondary mini-btn" data-edit-record="${r.id}">Edit</button>`:''}${hasPermission('verification.delete')?`<button class="danger mini-btn" data-delete-record="${r.id}">Delete</button>`:''}</div></article>`}
 function renderRecent(){const list=records.slice().sort((a,b)=>new Date(b.capturedAt)-new Date(a.capturedAt));$('photoCount').textContent=list.length;$('assetCount').textContent=flattenAssets().length;$('recordsEmpty').classList.toggle('hidden',list.length>0);$('recordList').innerHTML=list.slice(0,50).map(recordCard).join('');wireRecordActions($('recordList'))}
 function wireRecordActions(container){container.querySelectorAll('[data-edit-record]').forEach(b=>b.onclick=()=>openEditRecord(b.dataset.editRecord));container.querySelectorAll('[data-delete-record]').forEach(b=>b.onclick=()=>deleteRecord(b.dataset.deleteRecord))}
 async function deleteRecord(id){if(!confirm('Delete this verification record and its stored photo?'))return;const local=records.find(r=>String(r.id)===String(id));if(local?.localPending&&local.clientId){await removePendingCreate(local.clientId);toast('Offline verification removed from this device.');await refreshRecords();return}try{if(!navigator.onLine)throw new TypeError('Offline');await apiJson(`/records/${id}`,{method:'DELETE'});toast('Record deleted.');await refreshRecords()}catch(e){if(isNetworkError(e)||!navigator.onLine){await queueOfflineAction('DELETE',`/records/${id}`,null,{id,deleted:true});toast('Delete queued. It will sync automatically.',4000);await refreshRecords()}else toast(e.message,4200)}}
 function renderEditSticky(values){$('editStickyFields').innerHTML=fields.sticky.map(f=>fieldInputHtml(f,values?.[f.id]||'','editSticky')).join('')}
-function openEditRecord(id){editingRecord=records.find(r=>String(r.id)===String(id));if(!editingRecord)return;const urls=editingRecord.photoUrls?.length?editingRecord.photoUrls:(editingRecord.photoUrl?[editingRecord.photoUrl]:[]);if(urls.length){$('editPreview').src=urls[0];$('editPreview').classList.remove('hidden');$('editScanPreview').classList.add('hidden');$('editPhotoThumbs').innerHTML=urls.map((u,i)=>`<img src="${escapeHtml(u)}" data-edit-photo-thumb="${i}" class="${i===0?'active':''}" alt="Photo ${i+1}">`).join('');document.querySelectorAll('[data-edit-photo-thumb]').forEach(img=>img.onclick=()=>{$('editPreview').src=urls[Number(img.dataset.editPhotoThumb)];document.querySelectorAll('[data-edit-photo-thumb]').forEach(x=>x.classList.remove('active'));img.classList.add('active')})}else{$('editPreview').classList.add('hidden');$('editPhotoThumbs').innerHTML='';$('editScanPreview').classList.remove('hidden');$('editScanPreview').textContent=`Scanned Code(s): ${editingRecord.scanCode||'—'}`}renderEditSticky(editingRecord.sticky||{});renderVariableFields('editVariableFields',editingRecord.variable||{},'editVariable');const d=new Date(editingRecord.capturedAt);$('editCapturedDate').value=isoDateInput(d);$('editCapturedTime').value=timeInput(d);$('editLatitude').value=editingRecord.latitude||'';$('editLongitude').value=editingRecord.longitude||'';$('editGpsAccuracy').value=editingRecord.gpsAccuracy||'';renderAssetRows(editingRecord.assets||[],true);$('editRecordModal').classList.remove('hidden')}
+function openEditRecord(id){editingRecord=records.find(r=>String(r.id)===String(id));if(!editingRecord)return;const urls=currentPhotoUrls(editingRecord);if(urls.length){$('editPreview').src=urls[0];$('editPreview').classList.remove('hidden');$('editScanPreview').classList.add('hidden');$('editPhotoThumbs').innerHTML=urls.map((u,i)=>`<img src="${escapeHtml(u)}" data-edit-photo-thumb="${i}" class="${i===0?'active':''}" alt="Photo ${i+1}">`).join('');document.querySelectorAll('[data-edit-photo-thumb]').forEach(img=>img.onclick=()=>{$('editPreview').src=urls[Number(img.dataset.editPhotoThumb)];document.querySelectorAll('[data-edit-photo-thumb]').forEach(x=>x.classList.remove('active'));img.classList.add('active')})}else{$('editPreview').classList.add('hidden');$('editPhotoThumbs').innerHTML='';$('editScanPreview').classList.remove('hidden');$('editScanPreview').textContent=`Scanned Code(s): ${editingRecord.scanCode||'—'}`}renderEditSticky(editingRecord.sticky||{});renderVariableFields('editVariableFields',editingRecord.variable||{},'editVariable');const d=new Date(editingRecord.capturedAt);$('editCapturedDate').value=isoDateInput(d);$('editCapturedTime').value=timeInput(d);$('editLatitude').value=editingRecord.latitude||'';$('editLongitude').value=editingRecord.longitude||'';$('editGpsAccuracy').value=editingRecord.gpsAccuracy||'';renderAssetRows(editingRecord.assets||[],true);$('editRecordModal').classList.remove('hidden')}
 $('editAddAssetBtn').onclick=()=>{$('editAssetRows').insertAdjacentHTML('beforeend',assetRowHtml(assetDefault(),true));wireAssetRows($('editAssetRows'))};$('saveRecordEditBtn').onclick=async()=>{if(!editingRecord)return;const assets=collectAssetRows(true);if(!assets.length){toast('At least one asset is required.');return}const sticky=collectFieldValues('sticky','editSticky'),variable=collectFieldValues('variable','editVariable'),payload={capturedAt:combineDateTime($('editCapturedDate').value,$('editCapturedTime').value),latitude:$('editLatitude').value.trim(),longitude:$('editLongitude').value.trim(),gpsAccuracy:$('editGpsAccuracy').value.trim(),sticky,variable,clickedByMemberId:clickedByFromVariable(variable),assets};if(editingRecord.localPending&&editingRecord.clientId){await updatePendingCreate(editingRecord.clientId,payload);$('editRecordModal').classList.add('hidden');toast('Offline verification updated.');await refreshRecords();return}try{if(!navigator.onLine)throw new TypeError('Offline');await apiJson(`/records/${editingRecord.id}`,{method:'PUT',body:JSON.stringify(payload)});$('editRecordModal').classList.add('hidden');toast('Record updated.');await refreshRecords()}catch(e){if(isNetworkError(e)||!navigator.onLine){const optimistic={...editingRecord,...payload,clickedByName:users.find(u=>String(u.id)===String(payload.clickedByMemberId))?.name||editingRecord.clickedByName,localPending:true};await queueOfflineAction('PUT',`/records/${editingRecord.id}`,payload,optimistic);$('editRecordModal').classList.add('hidden');toast('Changes saved offline and queued for sync.',4200);await refreshRecords()}else toast(e.message,4200)}};
 
 // ---------- Search & filters ----------
 function uniqueFieldVals(fieldId){return [...new Set(records.map(r=>r.sticky?.[fieldId]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b)))}
 function populateFilters(){$('dynamicFilters').innerHTML=fields.sticky.map(f=>`<label>${escapeHtml(f.label)}<select data-filter-field="${f.id}"><option value="">All ${escapeHtml(f.label)}</option>${uniqueFieldVals(f.id).map(v=>`<option>${escapeHtml(v)}</option>`).join('')}</select></label>`).join('');$('dynamicFilters').querySelectorAll('select').forEach(s=>s.addEventListener('change',renderSearch))}
-function renderStatusTabs(){const rows=flattenAssets();const items=[['ALL','All',rows.length],['Found','Found',rows.filter(x=>x.asset.verificationStatus==='Found').length],['Not Found','Not Found',rows.filter(x=>x.asset.verificationStatus==='Not Found').length],['Pending','Pending',rows.filter(x=>x.asset.verificationStatus==='Pending').length],['IMAGES','📷 With Images',records.filter(r=>r.photoUrl).length]];$('statusTabs').innerHTML=items.map(([k,l,n])=>`<button class="${activeStatus===k?'active':''}" data-status="${k}">${l} (${n})</button>`).join('');$('statusTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{activeStatus=b.dataset.status;renderSearch()})}
-function searchFilteredRecords(){const q=$('searchText').value.trim().toLowerCase(),condition=$('filterCondition').value,filters=[...$('dynamicFilters').querySelectorAll('select')].map(s=>[s.dataset.filterField,s.value]).filter(x=>x[1]);return records.filter(r=>{for(const [id,v] of filters)if(String(r.sticky?.[id]||'')!==v)return false;if(activeStatus==='IMAGES'&&!r.photoUrl)return false;const assets=r.assets||[];const assetMatch=assets.some(a=>{if(condition&&a.condition!==condition)return false;if(activeStatus!=='ALL'&&activeStatus!=='IMAGES'&&a.verificationStatus!==activeStatus)return false;const hay=[a.assetName,a.serialNumber,a.barcode,a.condition,a.verificationStatus,a.notFoundReason,r.scanCode,r.latitude,r.longitude,r.clickedByName,...Object.values(r.sticky||{}),...Object.values(r.variable||{})].join(' ').toLowerCase();return !q||hay.includes(q)});return assetMatch||(!assets.length&&!q)})}
+function renderStatusTabs(){const rows=flattenAssets();const items=[['ALL','All',rows.length],['Found','Found',rows.filter(x=>x.asset.verificationStatus==='Found').length],['Not Found','Not Found',rows.filter(x=>x.asset.verificationStatus==='Not Found').length],['Pending','Pending',rows.filter(x=>x.asset.verificationStatus==='Pending').length],['IMAGES','📷 With Images',records.filter(r=>(r.photoUrls?.length||r.photoUrl)).length]];$('statusTabs').innerHTML=items.map(([k,l,n])=>`<button class="${activeStatus===k?'active':''}" data-status="${k}">${l} (${n})</button>`).join('');$('statusTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{activeStatus=b.dataset.status;renderSearch()})}
+function searchFilteredRecords(){const q=$('searchText').value.trim().toLowerCase(),condition=$('filterCondition').value,filters=[...$('dynamicFilters').querySelectorAll('select')].map(s=>[s.dataset.filterField,s.value]).filter(x=>x[1]);return records.filter(r=>{for(const [id,v] of filters)if(String(r.sticky?.[id]||'')!==v)return false;if(activeStatus==='IMAGES'&&!(r.photoUrls?.length||r.photoUrl))return false;const assets=r.assets||[];const assetMatch=assets.some(a=>{if(condition&&a.condition!==condition)return false;if(activeStatus!=='ALL'&&activeStatus!=='IMAGES'&&a.verificationStatus!==activeStatus)return false;const hay=[a.assetName,a.serialNumber,a.barcode,a.condition,a.verificationStatus,a.notFoundReason,r.scanCode,r.latitude,r.longitude,r.clickedByName,...Object.values(r.sticky||{}),...Object.values(r.variable||{})].join(' ').toLowerCase();return !q||hay.includes(q)});return assetMatch||(!assets.length&&!q)})}
 function renderSearch(){renderStatusTabs();const found=searchFilteredRecords();$('searchResults').innerHTML=found.map(recordCard).join('');$('searchEmpty').classList.toggle('hidden',found.length>0);wireRecordActions($('searchResults'))}
 $('searchText').addEventListener('input',renderSearch);$('filterCondition').addEventListener('change',renderSearch);$('clearFiltersBtn').onclick=()=>{$('searchText').value='';$('filterCondition').value='';$('dynamicFilters').querySelectorAll('select').forEach(s=>s.value='');activeStatus='ALL';renderSearch()};
 
@@ -391,11 +477,78 @@ $('deleteCompanyBtn').onclick=async()=>{const name=session.company.name;if(promp
 async function loadUsage(){try{const d=await apiJson('/usage');const pct=Math.min(100,(d.usedBytes/R2_FREE_BYTES)*100);$('usageText').textContent=`${bytesLabel(d.usedBytes)} of 10 GB`;$('usagePercent').textContent=`${pct.toFixed(2)}%`;$('usageBar').style.width=`${pct}%`;$('usagePhotos').textContent=d.photoCount;$('usageAssets').textContent=d.assetCount;$('usageBytes').textContent=bytesLabel(d.usedBytes)}catch(e){toast(e.message)}}
 
 // ---------- Excel export ----------
-async function urlToBase64(url){if(String(url).startsWith('data:image/'))return url;const r=await fetch(url,{headers:authHeaders(false)});if(!r.ok)throw new Error('Photo fetch failed');return await blobToDataUrl(await r.blob())}
-$('exportBtn').onclick=async()=>{if(!hasPermission('records.export'))return;if(!records.length){toast('No records to export.');return}if(!window.ExcelJS){toast('Excel library is not loaded.');return}toast('Preparing Excel report…',5000);try{const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Physical Verification');const dynamicSticky=fields.sticky.map((f,i)=>({header:f.label,key:`s_${i}`,width:20,field:f}));const dynamicVariable=fields.variable.map((f,i)=>({header:f.label,key:`v_${i}`,width:20,field:f}));const maxPhotos=Math.min(12,Math.max(1,...records.map(r=>(r.photoUrls?.length||(r.photoUrl?1:0))))),photoCols=Array.from({length:maxPhotos},(_,i)=>({header:`Photo ${i+1}`,key:`photo_${i}`,width:24}));ws.columns=[{header:'Sr No',key:'sr',width:8},...photoCols,{header:'Photo Count',key:'photoCount',width:12},{header:'Company',key:'company',width:28},...dynamicSticky,...dynamicVariable,{header:'Latitude',key:'lat',width:16},{header:'Longitude',key:'lon',width:16},{header:'GPS Accuracy (m)',key:'acc',width:16},{header:'Source',key:'source',width:12},{header:'Scanned Code(s)',key:'scan',width:30},{header:'Asset Name',key:'asset',width:28},{header:'Quantity',key:'qty',width:10},{header:'Condition',key:'condition',width:16},{header:'Found Status',key:'status',width:15},{header:'Not Found Reason',key:'reason',width:18},{header:'Serial Number',key:'serial',width:20},{header:'Barcode / QR / Asset Tag',key:'barcode',width:24},{header:'Clicked By',key:'by',width:20},{header:'Date',key:'date',width:14},{header:'Time',key:'time',width:14}];ws.views=[{state:'frozen',ySplit:1}];ws.getRow(1).font={bold:true};let sr=0,rowNo=2;for(const r of records){const urls=(r.photoUrls?.length?r.photoUrls:(r.photoUrl?[r.photoUrl]:[])).slice(0,maxPhotos),photoIds=[];for(const u of urls){try{const data=await urlToBase64(u),ext=data.startsWith('data:image/png')?'png':'jpeg';photoIds.push(wb.addImage({base64:data,extension:ext}))}catch{photoIds.push(null)}}for(const a of r.assets||[]){sr++;const obj={sr,photoCount:urls.length,company:session.company.name,lat:r.latitude||'',lon:r.longitude||'',acc:r.gpsAccuracy||'',source:r.source||'',scan:r.scanCode||'',asset:a.assetName,qty:a.quantity,condition:a.condition,status:a.verificationStatus,reason:a.notFoundReason||'',serial:a.serialNumber||'',barcode:a.barcode||'',by:r.clickedByName||'',date:fmtDate(r.capturedAt),time:fmtTime(r.capturedAt)};dynamicSticky.forEach((x,i)=>obj[`s_${i}`]=r.sticky?.[x.field.id]||'');dynamicVariable.forEach((x,i)=>{let v=r.variable?.[x.field.id]||'';if(x.field.type==='member'&&v)v=users.find(u=>String(u.id)===String(v))?.name||v;obj[`v_${i}`]=v});const row=ws.addRow(obj);row.height=84;photoIds.forEach((photoId,i)=>{if(photoId!==null)ws.addImage(photoId,{tl:{col:1+i,row:rowNo-1},ext:{width:145,height:100}})});rowNo++}}const buf=await wb.xlsx.writeBuffer(),blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${session.company.code}_Physical_Verification_${isoDateInput(new Date())}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Excel report generated.')}catch(e){console.error(e);toast('Could not generate Excel report.',4200)}};
+async function urlToBase64(url){if(String(url).startsWith('data:image/'))return url;const target=currentPhotoUrl(url);const r=await fetch(target,{headers:authHeaders(false),cache:'no-store',credentials:'omit'});if(!r.ok){let msg='';try{const d=await r.json();msg=d.error||''}catch{}throw new Error(msg||`Photo fetch failed (${r.status})`)}const blob=await r.blob();if(!String(blob.type||'').startsWith('image/'))throw new Error('Photo response was not an image');return await blobToDataUrl(blob)}
+$('exportBtn').onclick=async()=>{
+  if(!hasPermission('records.export'))return;
+  if(!records.length){toast('No records to export.');return}
+  if(!window.ExcelJS){toast('Excel library is not loaded.');return}
+  toast('Preparing Excel report and embedding photos…',6000);
+  try{
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet('Physical Verification');
+    const dynamicSticky=fields.sticky.map((f,i)=>({header:f.label,key:`s_${i}`,width:20,field:f}));
+    const dynamicVariable=fields.variable.map((f,i)=>({header:f.label,key:`v_${i}`,width:20,field:f}));
+    const maxPhotos=Math.min(12,Math.max(1,...records.map(r=>currentPhotoUrls(r).length)));
+    const photoCols=Array.from({length:maxPhotos},(_,i)=>({header:`Photo ${i+1}`,key:`photo_${i}`,width:24}));
+    ws.columns=[
+      {header:'Sr No',key:'sr',width:8},...photoCols,{header:'Photo Count',key:'photoCount',width:12},
+      {header:'Company',key:'company',width:28},...dynamicSticky,...dynamicVariable,
+      {header:'Latitude',key:'lat',width:16},{header:'Longitude',key:'lon',width:16},{header:'GPS Accuracy (m)',key:'acc',width:16},
+      {header:'Source',key:'source',width:12},{header:'Scanned Code(s)',key:'scan',width:30},
+      {header:'Asset Name',key:'asset',width:28},{header:'Quantity',key:'qty',width:10},{header:'Condition',key:'condition',width:16},
+      {header:'Found Status',key:'status',width:15},{header:'Not Found Reason',key:'reason',width:18},
+      {header:'Serial Number',key:'serial',width:20},{header:'Barcode / QR / Asset Tag',key:'barcode',width:24},
+      {header:'Clicked By',key:'by',width:20},{header:'Date',key:'date',width:14},{header:'Time',key:'time',width:14}
+    ];
+    ws.views=[{state:'frozen',ySplit:1}];
+    ws.getRow(1).font={bold:true};
+    let sr=0,rowNo=2,embeddedPhotos=0,failedPhotos=0;
+    for(const r of records){
+      const urls=currentPhotoUrls(r).slice(0,maxPhotos);
+      const photoIds=[];
+      for(const u of urls){
+        try{
+          const data=await urlToBase64(u);
+          const match=String(data).match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/i);
+          if(!match)throw new Error('Unsupported image format');
+          const extension=match[1].toLowerCase()==='png'?'png':'jpeg';
+          const imageId=wb.addImage({base64:match[2],extension});
+          photoIds.push(imageId);
+          embeddedPhotos++;
+        }catch(error){
+          console.error('Excel photo embed failed:',error);
+          photoIds.push(null);
+          failedPhotos++;
+        }
+      }
+      for(const a of r.assets||[]){
+        sr++;
+        const obj={sr,photoCount:urls.length,company:session.company.name,lat:r.latitude||'',lon:r.longitude||'',acc:r.gpsAccuracy||'',source:r.source||'',scan:r.scanCode||'',asset:a.assetName,qty:a.quantity,condition:a.condition,status:a.verificationStatus,reason:a.notFoundReason||'',serial:a.serialNumber||'',barcode:a.barcode||'',by:r.clickedByName||'',date:fmtDate(r.capturedAt),time:fmtTime(r.capturedAt)};
+        dynamicSticky.forEach((x,i)=>obj[`s_${i}`]=r.sticky?.[x.field.id]||'');
+        dynamicVariable.forEach((x,i)=>{let v=r.variable?.[x.field.id]||'';if(x.field.type==='member'&&v)v=users.find(u=>String(u.id)===String(v))?.name||v;obj[`v_${i}`]=v});
+        const row=ws.addRow(obj);
+        row.height=84;
+        photoIds.forEach((photoId,i)=>{if(photoId!==null)ws.addImage(photoId,{tl:{col:1+i,row:rowNo-1},ext:{width:145,height:100}})});
+        rowNo++;
+      }
+    }
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`${session.company.code}_Physical_Verification_${isoDateInput(new Date())}.xlsx`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    if(failedPhotos)toast(`Excel generated with ${embeddedPhotos} embedded photo(s). ${failedPhotos} photo(s) could not be fetched.`,6500);
+    else toast(`Excel report generated with ${embeddedPhotos} embedded photo(s).`,4500);
+  }catch(e){
+    console.error(e);
+    toast(e.message||'Could not generate Excel report.',5000);
+  }
+};
 
 
-// ---------- Version 11 complete backup & restore ----------
+// ---------- Version 12 complete backup & restore ----------
 $('downloadBackupBtn').onclick=async()=>{if(!hasPermission('backup.manage'))return;if(!navigator.onLine){toast('Reconnect to download a cloud backup.',3500);return}toast('Preparing complete company backup. Photos may take a moment…',6000);try{const d=await apiJson('/backup');const backup=d.backup;if(!backup)throw new Error('Backup data was not returned');const blob=new Blob([JSON.stringify(backup)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${session.company.code}_PRS_AssetVerify_Backup_${isoDateInput(new Date())}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);toast('Complete company backup downloaded. Keep the file secure.',4500)}catch(e){toast(e.message||'Could not create backup.',4500)}};
 $('restoreBackupBtn').onclick=async()=>{if(!hasPermission('backup.manage'))return;const file=$('restoreBackupInput').files?.[0];if(!file){toast('Select a PRS.AssetVerify backup JSON file first.');return}if(!navigator.onLine){toast('Restore requires an internet connection.');return}if(!confirm('Restore this backup? Current roles, members, masters, audit trail, records and photos in this company will be replaced. Company username/password and company code will remain unchanged.'))return;try{const backup=JSON.parse(await file.text());toast('Restoring backup and photos…',7000);const d=await apiJson('/restore',{method:'POST',body:JSON.stringify({backup})});session={...session,company:d.company||session.company,member:null};saveSession();roles=[];fields={sticky:[],variable:[]};records=[];await cacheSet('records',[]);await refreshUsers();$('restoreBackupInput').value='';updateShell();toast('Backup restored. Re-select a team member using the restored PIN.',5000);showMemberSelector()}catch(e){console.error(e);toast(e.message||'Restore failed.',5000)}};
 

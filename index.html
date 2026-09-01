@@ -108,7 +108,7 @@
             <button id="uploadPhotoBtn" class="secondary big-camera" data-permission-button="verification.upload_gallery">▣ Gallery</button>
             <button id="scanVerifyBtn" class="secondary big-camera" data-permission-button="verification.scan">▦ Scan & Verify</button>
           </div>
-          <p class="hint"><strong>Simple verification flow:</strong> click Take Photo / Gallery / Scan & Verify → complete Sticky Fields → Variable Fields appear automatically → review asset details → Save Verification. Every saved record is then available in Export Excel.</p>
+          <p class="hint"><strong>Simple verification flow:</strong> click Take Photo / Gallery / Scan & Verify → complete Sticky Fields → Variable Fields appear automatically → review asset details → Save Verification. GPS is detected automatically when available, but Latitude, Longitude and GPS Accuracy remain optional. Every saved record is then available in Export Excel with its photos.</p>
           <div id="offlineNotice" class="offline-notice hidden">Offline mode active. New verification records will stay safely on this device and sync automatically when internet returns.</div>
         </section>
 
@@ -270,9 +270,9 @@
     <div class="grid two">
       <label>Date<input id="capturedDateInput" type="date" /></label>
       <label>Time<input id="capturedTimeInput" type="time" step="1" /></label>
-      <label>Latitude<input id="latitude" inputmode="decimal" /></label>
-      <label>Longitude<input id="longitude" inputmode="decimal" /></label>
-      <label>GPS Accuracy (metres)<input id="gpsAccuracy" inputmode="decimal" /></label>
+      <label>Latitude <small>(Optional · auto-detected)</small><input id="latitude" inputmode="decimal" placeholder="Auto-detected when location is allowed" /></label>
+      <label>Longitude <small>(Optional · auto-detected)</small><input id="longitude" inputmode="decimal" placeholder="Auto-detected when location is allowed" /></label>
+      <label>GPS Accuracy (metres) <small>(Optional · auto-detected)</small><input id="gpsAccuracy" inputmode="decimal" placeholder="Auto-detected when available" /></label>
     </div>
     <div id="gpsNote" class="field-note"></div>
 
@@ -311,9 +311,9 @@
     <div class="grid two">
       <label>Date<input id="editCapturedDate" type="date" /></label>
       <label>Time<input id="editCapturedTime" type="time" step="1" /></label>
-      <label>Latitude<input id="editLatitude" inputmode="decimal" /></label>
-      <label>Longitude<input id="editLongitude" inputmode="decimal" /></label>
-      <label>GPS Accuracy (metres)<input id="editGpsAccuracy" inputmode="decimal" /></label>
+      <label>Latitude <small>(Optional)</small><input id="editLatitude" inputmode="decimal" /></label>
+      <label>Longitude <small>(Optional)</small><input id="editLongitude" inputmode="decimal" /></label>
+      <label>GPS Accuracy (metres) <small>(Optional)</small><input id="editGpsAccuracy" inputmode="decimal" /></label>
     </div>
     <div id="editVariableFields" class="form-stack"></div>
     <div class="assets-panel"><div class="assets-panel-head"><h3>Assets</h3><button id="editAddAssetBtn" class="secondary mini-btn">＋ Add</button></div><div id="editAssetRows" class="asset-rows"></div></div>
