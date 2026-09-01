@@ -1,16 +1,18 @@
-# PRS.AssetVerify Version 10
+# PRS.AssetVerify Version 11
 
-Version 10 preserves the stable `v8_*` cloud schema and all V9 features, while improving role administration and request reliability.
+Version 11 is a non-destructive upgrade. Existing companies and their cloud data are preserved.
 
-## V10 changes
-- At least one active system Admin is compulsory at all times.
-- The last Admin cannot be reassigned to another role or deleted.
-- System-generated Admin, Verifier and Viewer roles are editable.
-- System roles keep stable internal keys (`ADMIN`, `VERIFIER`, `VIEWER`) even if renamed.
-- Role assignment validates the final member-role state before applying updates.
-- The active session refreshes when the selected member's role changes.
-- Frontend API handling avoids raw `Failed to fetch` messages and provides clearer connectivity errors.
-- Existing V9 data, roles, records, photos, backups, PINs, audit trail, offline queue, GPS, scanning and multi-image verification are preserved.
+## V11 fixes and features
 
-## Data policy
-V10 does not reset company data. Future updates should continue migrating the existing stable `v8_*` schema in place.
+- At least one active Admin is compulsory at all times. The last Admin cannot be reassigned or deleted.
+- Role assignment is validated and applied safely; errors are returned as readable application messages rather than raw `Failed to fetch` wherever the Worker is reachable.
+- System-generated Admin, Verifier and Viewer roles are editable (name, description, permissions and assignments) but cannot be deleted.
+- Immutable system-role identities keep Admin logic intact even if a system role is renamed.
+- Capture flow is explicit: Sticky Fields → Take/Upload/Scan → Continue to Variable Details → review assets → Save Verification.
+- GPS and AI run in the background after the capture review opens, so they do not block progression.
+- All V9/V10 features remain: multi-image verification, GPS, barcode/QR scan, offline queue/sync, audit trail, member PIN, dynamic Setting & Master, Excel export, company backup/restore, usage monitoring and R2 photo storage.
+- V11 does NOT run any startup routine that deletes companies.
+
+## Persistence rule
+
+V11 continues using the stable `v8_*` D1 tables and migrates them in place. Deploying V11 must not delete existing companies, members, roles, records, audit history or photos. Company/record deletion occurs only when a user explicitly uses a delete action.

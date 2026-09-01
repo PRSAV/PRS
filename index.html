@@ -284,13 +284,19 @@
     </div>
     <div id="gpsNote" class="field-note"></div>
     <div id="locationSnapshot" class="location-snapshot"></div>
-    <div id="variableFieldsContainer" class="form-stack"></div>
-    <div class="assets-panel">
-      <div class="assets-panel-head"><div><h3>Assets in this verification</h3><span id="aiStatus" class="field-note"></span></div><button id="retryAiBtn" class="secondary mini-btn">Retry AI</button></div>
-      <div id="assetRows" class="asset-rows"></div>
-      <button id="addAssetRowBtn" class="secondary full-inline">＋ Add Asset Row</button>
+    <button id="continueToVariableBtn" type="button" class="primary full">Continue to Variable Details →</button>
+    <div id="detailStep2" class="hidden">
+      <div class="section-title-row top-gap">
+        <div><h3>Variable Details</h3><p>Complete the variable information for this verification, review the detected assets, then save the record.</p></div>
+      </div>
+      <div id="variableFieldsContainer" class="form-stack"></div>
+      <div class="assets-panel">
+        <div class="assets-panel-head"><div><h3>Assets in this verification</h3><span id="aiStatus" class="field-note"></span></div><button id="retryAiBtn" class="secondary mini-btn">Retry AI</button></div>
+        <div id="assetRows" class="asset-rows"></div>
+        <button id="addAssetRowBtn" class="secondary full-inline">＋ Add Asset Row</button>
+      </div>
+      <button id="savePhotoBtn" class="primary full">Save Verification</button>
     </div>
-    <button id="savePhotoBtn" class="primary full">Save Verification</button>
   </div></div>
 
   <div id="editRecordModal" class="modal hidden"><div class="modal-sheet">
