@@ -1,13 +1,16 @@
-# PRS.AssetVerify Version 9
+# PRS.AssetVerify Version 10
 
-Version 9 keeps the stable cloud data schema used from V8 onward and adds:
+Version 10 preserves the stable `v8_*` cloud schema and all V9 features, while improving role administration and request reliability.
 
-- Universal close/exit controls for pages, drawers and modals.
-- Delete company directly from Existing Companies after system Admin name + PIN verification.
-- Complete company Backup & Restore including photos, members, PIN hashes, roles, masters, records and audit trail.
-- Persistent data policy from V9 onward: future upgrades must migrate the existing stable `v8_*` tables in place instead of starting new version tables.
-- Multiple-image verification: attach up to 12 camera/gallery images to one verification and scan multiple barcode/QR images/codes.
-- Existing V8 offline queue/session storage keys are intentionally retained so local data is not discarded by the V9 frontend update.
+## V10 changes
+- At least one active system Admin is compulsory at all times.
+- The last Admin cannot be reassigned to another role or deleted.
+- System-generated Admin, Verifier and Viewer roles are editable.
+- System roles keep stable internal keys (`ADMIN`, `VERIFIER`, `VIEWER`) even if renamed.
+- Role assignment validates the final member-role state before applying updates.
+- The active session refreshes when the selected member's role changes.
+- Frontend API handling avoids raw `Failed to fetch` messages and provides clearer connectivity errors.
+- Existing V9 data, roles, records, photos, backups, PINs, audit trail, offline queue, GPS, scanning and multi-image verification are preserved.
 
-## One-time V9 reset
-At the user's request, the first V9 Worker request performs a one-time cleanup of all companies that existed before V9 and records `v9_initial_reset_done` in `v8_app_meta`. It never repeats after the marker is written.
+## Data policy
+V10 does not reset company data. Future updates should continue migrating the existing stable `v8_*` schema in place.
