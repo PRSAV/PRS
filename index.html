@@ -28,6 +28,7 @@
         <button id="logoutBtn" class="ghost-btn hidden">Logout</button>
       </div>
     </header>
+    <button id="viewExitBtn" class="view-exit hidden" aria-label="Close current section" title="Back to Verification">✕</button>
 
     <aside id="drawer" class="drawer hidden">
       <div class="drawer-head">
@@ -41,6 +42,7 @@
         <button data-nav="users" data-permission="members.view">👥 Team Members</button>
         <button data-nav="roles" data-permission="roles.view">🔐 Roles & Permissions</button>
         <button data-nav="masters" data-permission="masters.view">⚙ Setting & Master</button>
+        <button data-nav="audit" data-permission="audit.view">🧾 Audit Trail</button>
         <button data-nav="usage" data-permission="records.view_usage">▰ Usage</button>
         <button data-nav="editCompany" data-permission="company.edit">✎ Edit Company</button>
         <button data-nav="switchMember">👤 Switch Team Member</button>
@@ -76,7 +78,7 @@
             <label>Company Password *<input id="newCompanyPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters" /></label>
           </div>
           <div class="section-title-row top-gap">
-            <div><h2>Team Members & Rights</h2><p>Members need only a name and an initial role. Company credentials are common for entering the workspace.</p></div>
+            <div><h2>Team Members & Rights</h2><p>Each member has a personal PIN in addition to the shared company credentials.</p></div>
             <button id="addCreateMemberBtn" class="secondary">＋ Add Member</button>
           </div>
           <div id="createMembers" class="member-editor"></div>
@@ -91,7 +93,7 @@
           <button class="secondary" data-back-welcome>Back</button>
         </div>
         <div id="companyList" class="company-list"></div>
-        <div id="noCompanies" class="empty hidden">No Version 7 companies have been created yet.</div>
+        <div id="noCompanies" class="empty hidden">No Version 8 companies have been created yet.</div>
       </section>
 
       <section id="verifyView" class="view hidden">
@@ -113,6 +115,7 @@
             <button id="scanVerifyBtn" class="secondary big-camera" data-permission-button="verification.scan">▦ Scan & Verify</button>
           </div>
           <p class="hint">Take Photo and Scan & Verify request high-accuracy GPS. Latitude, longitude and GPS accuracy are saved with the record and exported to Excel.</p>
+          <div id="offlineNotice" class="offline-notice hidden">Offline mode active. New verification records will stay safely on this device and sync automatically when internet returns.</div>
         </section>
 
         <section class="summary-row">
@@ -171,6 +174,13 @@
         </div>
       </section>
 
+      <section id="auditView" class="view hidden">
+        <div class="page-head"><div><div class="eyebrow">GOVERNANCE</div><h1>Audit Trail</h1></div><button id="refreshAuditBtn" class="secondary">Refresh</button></div>
+        <div class="card filter-card"><div class="search-line"><input id="auditSearch" placeholder="Search action, user, record, role, field..." /><button id="clearAuditBtn" class="secondary">Clear</button></div></div>
+        <div id="auditList" class="audit-list"></div>
+        <div id="auditEmpty" class="empty hidden">No audit events found.</div>
+      </section>
+
       <section id="usageView" class="view hidden">
         <div class="page-head"><div><div class="eyebrow">STORAGE</div><h1>Usage</h1></div></div>
         <div class="card usage-card">
@@ -220,8 +230,16 @@
 
   <div id="memberSelectModal" class="modal hidden"><div class="modal-sheet small-sheet">
     <div class="modal-head"><div><div class="eyebrow">WHO IS USING THE APP?</div><h2>Select Team Member</h2></div></div>
-    <p class="muted">Select your name. Your assigned role controls what you can do.</p>
+    <p class="muted">Select your name, then enter your personal member PIN.</p>
     <div id="memberSelectList" class="member-select-list"></div>
+  </div></div>
+
+
+  <div id="memberPinModal" class="modal hidden"><div class="modal-sheet small-sheet">
+    <div class="modal-head"><div><div class="eyebrow">MEMBER SECURITY</div><h2 id="memberPinTitle">Enter Member PIN</h2></div><button class="icon-btn" data-close="memberPinModal">✕</button></div>
+    <p id="memberPinHint" class="muted"></p>
+    <label>Personal PIN<input id="memberPinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="4–6 digit PIN" /></label>
+    <button id="confirmMemberPinBtn" class="primary full">Continue</button>
   </div></div>
 
   <div id="detailModal" class="modal hidden"><div class="modal-sheet">
@@ -274,7 +292,7 @@
 
   <div id="userModal" class="modal hidden"><div class="modal-sheet small-sheet">
     <div class="modal-head"><div><div class="eyebrow">TEAM MEMBER</div><h2 id="userModalTitle">Add Team Member</h2></div><button class="icon-btn" data-close="userModal">✕</button></div>
-    <div class="form-stack"><label>Full Name *<input id="userName" /></label><label>Role *<select id="userRole"></select></label></div>
+    <div class="form-stack"><label>Full Name *<input id="userName" /></label><label>Role *<select id="userRole"></select></label><label>Member PIN <input id="userPin" type="password" inputmode="numeric" maxlength="6" placeholder="4–6 digits; leave blank when editing to keep current PIN" /></label></div>
     <button id="saveUserBtn" class="primary full">Save Team Member</button>
   </div></div>
 
