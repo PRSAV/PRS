@@ -1,4 +1,4 @@
-const CACHE = 'prs-assetverify-v8-1';
+const CACHE = 'prs-assetverify-v9-1';
 const CORE = [
   './',
   './index.html',

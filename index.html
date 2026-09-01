@@ -32,6 +32,7 @@
 
     <aside id="drawer" class="drawer hidden">
       <div class="drawer-head">
+        <button id="closeDrawerBtn" class="drawer-close" aria-label="Close menu">✕</button>
         <div class="eyebrow">CURRENT COMPANY</div>
         <h2 id="drawerCompany">—</h2>
         <div id="drawerUser" class="muted"></div>
@@ -43,6 +44,7 @@
         <button data-nav="roles" data-permission="roles.view">🔐 Roles & Permissions</button>
         <button data-nav="masters" data-permission="masters.view">⚙ Setting & Master</button>
         <button data-nav="audit" data-permission="audit.view">🧾 Audit Trail</button>
+        <button data-nav="backup" data-permission="backup.manage">💾 Backup & Restore</button>
         <button data-nav="usage" data-permission="records.view_usage">▰ Usage</button>
         <button data-nav="editCompany" data-permission="company.edit">✎ Edit Company</button>
         <button data-nav="switchMember">👤 Switch Team Member</button>
@@ -57,7 +59,7 @@
         <div class="welcome-card">
           <div class="welcome-logo">PRS.AssetVerify</div>
           <h1>PRS Asset Verification App</h1>
-          <p>Create a new company workspace or enter an existing company.</p>
+          <p>Create a new company workspace, enter an existing company, or restore a saved company backup.</p>
           <div class="welcome-actions">
             <button id="openCreateCompanyBtn" class="primary large">＋ Create Company</button>
             <button id="openExistingCompanyBtn" class="secondary large">Existing Company</button>
@@ -93,7 +95,7 @@
           <button class="secondary" data-back-welcome>Back</button>
         </div>
         <div id="companyList" class="company-list"></div>
-        <div id="noCompanies" class="empty hidden">No Version 8 companies have been created yet.</div>
+        <div id="noCompanies" class="empty hidden">No companies have been created yet.</div>
       </section>
 
       <section id="verifyView" class="view hidden">
@@ -107,8 +109,8 @@
 
         <section class="capture-panel">
           <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
-          <input id="galleryInput" type="file" accept="image/*" hidden />
-          <input id="scanImageInput" type="file" accept="image/*" hidden />
+          <input id="galleryInput" type="file" accept="image/*" multiple hidden />
+          <input id="scanImageInput" type="file" accept="image/*" multiple hidden />
           <div class="capture-buttons capture-buttons-v7">
             <button id="takePhotoBtn" class="primary big-camera" data-permission-button="verification.capture_photo">📷 Take Photo</button>
             <button id="uploadPhotoBtn" class="secondary big-camera" data-permission-button="verification.upload_gallery">▣ Gallery</button>
@@ -181,6 +183,24 @@
         <div id="auditEmpty" class="empty hidden">No audit events found.</div>
       </section>
 
+      <section id="backupView" class="view hidden">
+        <div class="page-head"><div><div class="eyebrow">DATA PROTECTION</div><h1>Backup & Restore</h1></div></div>
+        <div class="grid two backup-grid">
+          <div class="card">
+            <h2>Download Company Backup</h2>
+            <p class="muted">Creates a complete JSON backup of this company including members, PIN hashes, roles, settings, audit trail, verification data and stored photos. Keep the file secure.</p>
+            <button id="downloadBackupBtn" class="primary full">Download Backup</button>
+          </div>
+          <div class="card">
+            <h2>Restore Company Backup</h2>
+            <p class="muted">Restore a previous PRS.AssetVerify backup into this company. Current company username/password and company code are kept; operational data is replaced by the backup.</p>
+            <input id="restoreBackupInput" type="file" accept="application/json,.json" />
+            <button id="restoreBackupBtn" class="danger full">Restore Selected Backup</button>
+            <div class="info-box">After restore, all active sessions must re-select a team member using the restored member PIN.</div>
+          </div>
+        </div>
+      </section>
+
       <section id="usageView" class="view hidden">
         <div class="page-head"><div><div class="eyebrow">STORAGE</div><h1>Usage</h1></div></div>
         <div class="card usage-card">
@@ -215,6 +235,15 @@
     </main>
   </div>
 
+  <div id="publicDeleteCompanyModal" class="modal hidden"><div class="modal-sheet small-sheet">
+    <div class="modal-head"><div><div class="eyebrow">DELETE COMPANY</div><h2 id="publicDeleteCompanyTitle">Delete Company</h2></div><button class="icon-btn" data-close="publicDeleteCompanyModal">✕</button></div>
+    <div class="danger-zone compact-danger">
+      <p>This permanently deletes the selected company and all cloud records/photos. Enter the name and PIN of a system Admin for that company.</p>
+    </div>
+    <div class="form-stack"><label>Admin Name *<input id="publicDeleteAdminName" autocomplete="off" placeholder="Exact admin name" /></label><label>Admin PIN *<input id="publicDeleteAdminPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="4–6 digit PIN" /></label></div>
+    <button id="confirmPublicDeleteCompanyBtn" class="danger full">Permanently Delete Company</button>
+  </div></div>
+
   <div id="loginModal" class="modal hidden"><div class="modal-sheet small-sheet">
     <div class="modal-head"><div><div class="eyebrow">COMPANY LOGIN</div><h2 id="loginCompanyName">Company</h2></div><button class="icon-btn" data-close="loginModal">✕</button></div>
     <div class="form-stack"><label>Company Username<input id="loginUsername" autocomplete="username" /></label><label>Company Password<input id="loginPassword" type="password" autocomplete="current-password" /></label></div>
@@ -229,7 +258,7 @@
   </div></div>
 
   <div id="memberSelectModal" class="modal hidden"><div class="modal-sheet small-sheet">
-    <div class="modal-head"><div><div class="eyebrow">WHO IS USING THE APP?</div><h2>Select Team Member</h2></div></div>
+    <div class="modal-head"><div><div class="eyebrow">WHO IS USING THE APP?</div><h2>Select Team Member</h2></div><button id="closeMemberSelectBtn" class="icon-btn" aria-label="Close member selection">✕</button></div>
     <p class="muted">Select your name, then enter your personal member PIN.</p>
     <div id="memberSelectList" class="member-select-list"></div>
   </div></div>
@@ -244,7 +273,7 @@
 
   <div id="detailModal" class="modal hidden"><div class="modal-sheet">
     <div class="modal-head"><div><div class="eyebrow">NEW VERIFICATION</div><h2 id="detailTitle">Add details</h2></div><button id="discardPhotoBtn" class="icon-btn">✕</button></div>
-    <img id="photoPreview" class="preview" alt="Verification photo" />
+    <div id="photoPreviewArea" class="multi-photo-area"><img id="photoPreview" class="preview" alt="Verification photo" /><div id="photoThumbs" class="photo-thumbs"></div><div id="addPhotoControls" class="grid two"><button id="addCameraPhotoBtn" type="button" class="secondary">📷 Add Another Photo</button><button id="addGalleryPhotosBtn" type="button" class="secondary">▣ Add Gallery Photos</button></div></div>
     <div id="scanOnlyPreview" class="scan-only-preview hidden">▦ <strong id="scanOnlyCode"></strong></div>
     <div class="grid two">
       <label>Date<input id="capturedDateInput" type="date" /></label>
@@ -266,7 +295,7 @@
 
   <div id="editRecordModal" class="modal hidden"><div class="modal-sheet">
     <div class="modal-head"><div><div class="eyebrow">EDIT VERIFICATION</div><h2>Edit saved record</h2></div><button class="icon-btn" data-close="editRecordModal">✕</button></div>
-    <img id="editPreview" class="preview" alt="Verification photo" />
+    <div id="editPhotoArea"><img id="editPreview" class="preview" alt="Verification photo" /><div id="editPhotoThumbs" class="photo-thumbs"></div></div>
     <div id="editScanPreview" class="scan-only-preview hidden"></div>
     <div id="editStickyFields" class="grid two"></div>
     <div class="grid two">
@@ -284,9 +313,9 @@
   <div id="scannerModal" class="modal hidden"><div class="modal-sheet small-sheet">
     <div class="modal-head"><div><div class="eyebrow">SCAN & VERIFY</div><h2>Barcode / QR scanner</h2></div><button id="closeScannerBtn" class="icon-btn">✕</button></div>
     <div id="qrReader" class="qr-reader"></div>
-    <div class="form-stack"><label>Scanned Code<input id="manualScanCode" placeholder="Scan or enter manually" /></label></div>
+    <div class="form-stack"><label>Scanned Code<input id="manualScanCode" placeholder="Scan or enter manually" /></label><div id="scanDetectedList" class="scan-code-list"></div></div>
     <div class="grid two"><button id="startScannerBtn" class="primary">Start Camera</button><button id="scanImageBtn" class="secondary">Scan Image</button></div>
-    <button id="useScanCodeBtn" class="success full">Use Code & Verify</button>
+    <button id="useScanCodeBtn" class="success full">Use Code(s) & Verify</button>
     <p id="scanStatus" class="field-note"></p>
   </div></div>
 
